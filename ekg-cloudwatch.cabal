@@ -26,6 +26,15 @@ library
       src
   build-depends:
       base >=4.7 && <5
+    , ekg-core >= 0.1 && < 1.0
+    , amazonka
+    , amazonka-cloudwatch
+    , time
+    , unordered-containers
+    , text
+    , lens
+  exposed-modules:
+      System.Remote.Monitoring.CloudWatch
   default-language: Haskell2010
 
 test-suite ekg-cloudwatch-test
@@ -35,6 +44,13 @@ test-suite ekg-cloudwatch-test
   main-is: Spec.hs
   build-depends:
       base >=4.7 && <5
+    , ekg-core >= 0.1 && < 1.0
+    , amazonka
+    , amazonka-cloudwatch
+    , time
+    , unordered-containers
+    , text
+    , lens
     , base
     , ekg-cloudwatch
     , hspec
