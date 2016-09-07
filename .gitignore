@@ -1,0 +1,8 @@
+.idea
+*.tix
+.stack-work
+prod.env
+dev.env
+dist
+exes
+*.log

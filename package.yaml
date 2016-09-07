@@ -1,0 +1,29 @@
+name: ekg-cloudwatch
+version: '0.0.0.0'
+synopsis: An ekg backend for Amazon Cloudwatch
+description: Push ekg metrics to Amazon Cloudwatch
+category: Web
+author: Matt Parsons
+maintainer: matt@sellerlabs.com
+copyright: 2016 Seller Labs
+license: OtherLicense
+github: sellerlabs/ekg-cloudwatch
+
+dependencies:
+  - base >=4.7 && <5
+
+library:
+  source-dirs: src
+
+tests:
+  ekg-cloudwatch-test:
+    main: Spec.hs
+    source-dirs: test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - base
+    - ekg-cloudwatch
+    - hspec
