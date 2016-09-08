@@ -57,22 +57,23 @@ data CloudWatchEnv = CloudWatchEnv
   -- ^ The function used to handle exceptions coming from 'amazonka' library.
   }
 
--- | The default 'CloudWatchEnv'. Equal to:
+-- | The default 'CloudWatchEnv', requiring an Amazon environment and namespace.
+-- Equal to:
 -- @
 -- 'CloudWatchEnv'
 --   { 'cweFlushInterval' = 1000
 --   , 'cweAwsEnv' = x
---   , 'cweNamespace' = ""
+--   , 'cweNamespace' = namespace
 --   , 'cweDimensions' = []
 --   , 'cweOnError' = 'defaultOnError'
 --   }
 -- @
-defaultCloudWatchEnv :: AWS.Env -> CloudWatchEnv
-defaultCloudWatchEnv x =
+defaultCloudWatchEnv :: Text -> AWS.Env -> CloudWatchEnv
+defaultCloudWatchEnv namespace x =
   CloudWatchEnv
   { cweFlushInterval = 1000
   , cweAwsEnv = x
-  , cweNamespace = ""
+  , cweNamespace = namespace
   , cweDimensions = []
   , cweOnError = defaultOnError
   }
