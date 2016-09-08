@@ -1,5 +1,5 @@
 name: ekg-cloudwatch
-version: '0.0.1.0'
+version: '0.0.1.1'
 synopsis: An ekg backend for Amazon Cloudwatch
 description: Push ekg metrics to Amazon Cloudwatch
 category: Web

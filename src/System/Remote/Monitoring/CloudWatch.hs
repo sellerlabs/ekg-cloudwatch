@@ -1,8 +1,9 @@
-{-# LANGUAGE BangPatterns           #-}
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE LambdaCase             #-}
-{-# LANGUAGE OverloadedStrings      #-}
-{-# LANGUAGE RecordWildCards        #-}
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE Rank2Types        #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 -- | This module allows you to periodically push your 'ekg' metrics to the
 -- Amazon CloudWatch backend. Inspired by the 'ekg-statsd' module.
@@ -26,13 +27,14 @@ import           Data.Int                             (Int64)
 import           Data.Monoid
 import           Data.Text                            (Text)
 import qualified Data.Text                            as Text
+import qualified Data.Text.IO                         as Text
 import           Data.Time                            (NominalDiffTime)
 import           Data.Time.Clock.POSIX                (getPOSIXTime)
 import           Network.AWS                          as AWS
 import           Network.AWS.CloudWatch               as AWS
-import qualified System.Metrics.Distribution.Internal as Distribution
-
+import           System.IO                            (stderr)
 import qualified System.Metrics                       as Metrics
+import qualified System.Metrics.Distribution.Internal as Distribution
 
 -- | The 'ThreadID' for the 'CloudWatch' process.
 newtype CloudWatchId = CloudWatchId
@@ -51,6 +53,8 @@ data CloudWatchEnv = CloudWatchEnv
   -- "RegionName", "Environment", etc.
   , cweNamespace     :: !Text
   -- ^ The namespace that the service runs in.
+  , cweOnError       :: !(forall e. Exception e => e -> IO ())
+  -- ^ The function used to handle exceptions coming from 'amazonka' library.
   }
 
 -- | The default 'CloudWatchEnv'. Equal to:
@@ -60,6 +64,7 @@ data CloudWatchEnv = CloudWatchEnv
 --   , 'cweAwsEnv' = x
 --   , 'cweNamespace' = ""
 --   , 'cweDimensions' = []
+--   , 'cweOnError' = 'defaultOnError'
 --   }
 -- @
 defaultCloudWatchEnv :: AWS.Env -> CloudWatchEnv
@@ -69,7 +74,18 @@ defaultCloudWatchEnv x =
   , cweAwsEnv = x
   , cweNamespace = ""
   , cweDimensions = []
+  , cweOnError = defaultOnError
   }
+
+-- | The default error handler is to 'show' the exception and log it to
+-- @stderr@.
+defaultOnError :: Exception e => e -> IO ()
+defaultOnError =
+  Text.hPutStrLn stderr . Text.pack  . show . toException
+
+-- | Use this if you don't want to do anything with the error.
+swallowOnError :: Exception e => e -> IO ()
+swallowOnError _ = pure ()
 
 -- | Forks a thread to periodically publish metrics to Amazon's CloudWatch
 -- service for the given 'Store'.
@@ -149,7 +165,7 @@ flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
               & k
             ]
       case e of
-        Left err -> pure () -- TODO: log?
+        Left err -> cweOnError err
         Right _ -> pure ()
 
     conv :: Distribution.Stats -> StatisticSet
