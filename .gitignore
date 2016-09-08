@@ -1,4 +1,5 @@
 .idea
+*.cabal
 *.tix
 .stack-work
 prod.env
