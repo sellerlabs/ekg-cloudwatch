@@ -9,7 +9,7 @@
 -- | This module allows you to periodically push your 'ekg' metrics to the
 -- Amazon CloudWatch backend. Inspired by the 'ekg-statsd' module.
 --
--- To use, run `forkCloudWatch
+-- To use, run 'forkCloudWatch' with the 'CloudWatchEnv' and metrics 'Store'.
 module System.Remote.Monitoring.CloudWatch
   ( CloudWatchId
   , cloudWatchThreadId
@@ -45,10 +45,6 @@ newtype CloudWatchId = CloudWatchId
 data CloudWatchEnv = CloudWatchEnv
   { cweFlushInterval :: !Int
   -- ^ The interval of time to flush, in milliseconds.
-  , cweSuffix        :: !Text
-  -- ^ The suffix to put on the end of metric names.
-  , cwePrefix        :: !Text
-  -- ^ The prefix to put on the beginning of metric names.
   , cweAwsEnv        :: !AWS.Env
   -- ^ The AWS Environment that connects to the CloudWatch services.
   , cweDimensions    :: ![AWS.Dimension]
@@ -63,8 +59,6 @@ makeFields ''CloudWatchEnv
 -- @
 -- 'CloudWatchEnv'
 --   { 'cweFlushInterval' = 1000
---   , 'cwePrefix' = ""
---   , 'cweSuffix' = ""
 --   , 'cweAwsEnv' = x
 --   , 'cweNamespace' = ""
 --   , 'cweDimensions' = []
@@ -74,8 +68,6 @@ defaultCloudWatchEnv :: AWS.Env -> CloudWatchEnv
 defaultCloudWatchEnv x =
   CloudWatchEnv
   { cweFlushInterval = 1000
-  , cwePrefix = ""
-  , cweSuffix = ""
   , cweAwsEnv = x
   , cweNamespace = ""
   , cweDimensions = []
@@ -135,16 +127,8 @@ diffSamples prev !curr = Map.foldlWithKey' combine Map.empty curr
     diffMetric _ _ = Nothing
 
 flushSample :: CloudWatchEnv -> Metrics.Sample -> IO ()
-flushSample CloudWatchEnv{..} = void . Map.traverseWithKey (flushMetric . processName)
+flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
   where
-    processName :: Text -> Text
-    processName =
-      let suffix = emptyOrDot cweSuffix <> cweSuffix
-          prefix = cwePrefix <> emptyOrDot cwePrefix
-      in (prefix <>) . (<> suffix)
-
-    emptyOrDot x = if Text.null x then "" else "."
-
     flushMetric :: Text -> Metrics.Value -> IO ()
     flushMetric name =
       \case
