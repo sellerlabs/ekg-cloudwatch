@@ -1,10 +1,8 @@
 {-# LANGUAGE BangPatterns           #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE OverloadedStrings      #-}
 {-# LANGUAGE RecordWildCards        #-}
-{-# LANGUAGE TemplateHaskell        #-}
 
 -- | This module allows you to periodically push your 'ekg' metrics to the
 -- Amazon CloudWatch backend. Inspired by the 'ekg-statsd' module.
@@ -48,12 +46,12 @@ data CloudWatchEnv = CloudWatchEnv
   , cweAwsEnv        :: !AWS.Env
   -- ^ The AWS Environment that connects to the CloudWatch services.
   , cweDimensions    :: ![AWS.Dimension]
-  -- ^ The extra dimensions to pass for each metric.
+  -- ^ The extra dimensions to pass for each metric. These can be used to
+  -- configure process-level metric information, like "ServerGroup",
+  -- "RegionName", "Environment", etc.
   , cweNamespace     :: !Text
   -- ^ The namespace that the service runs in.
   }
-
-makeFields ''CloudWatchEnv
 
 -- | The default 'CloudWatchEnv'. Equal to:
 -- @
@@ -79,8 +77,8 @@ forkCloudWatch :: CloudWatchEnv -> Metrics.Store -> IO CloudWatchId
 forkCloudWatch env store = do
   me <- myThreadId
   fmap CloudWatchId . forkFinally (loop env store mempty) $ \case
-      Left e -> throwTo me e
-      Right _ -> pure ()
+    Left e -> throwTo me e
+    Right _ -> pure ()
 
 loop :: CloudWatchEnv -> Metrics.Store -> Metrics.Sample -> IO ()
 loop env store lastSample = do
@@ -88,7 +86,7 @@ loop env store lastSample = do
   sample <- Metrics.sampleAll store
   flushSample env (diffSamples lastSample sample)
   end <- time
-  threadDelay (cweFlushInterval env * 100 - fromIntegral (end - start))
+  threadDelay (cweFlushInterval env * 1000 - fromIntegral (end - start))
   loop env store sample
 
 -- | Microseconds since epoch. Vendored from `ekg-statsd`
@@ -155,4 +153,4 @@ flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
         Right _ -> pure ()
 
     conv :: Distribution.Stats -> StatisticSet
-    conv Distribution.Stats{..} = statisticSet (fromIntegral count) sum min max
+    conv Distribution.Stats {..} = statisticSet (fromIntegral count) sum min max
