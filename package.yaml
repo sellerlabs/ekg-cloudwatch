@@ -6,7 +6,7 @@ category: Web
 author: Matt Parsons
 maintainer: matt@sellerlabs.com
 copyright: 2016 Seller Labs
-license: OtherLicense
+license: BSD3
 github: sellerlabs/ekg-cloudwatch
 
 dependencies:
