@@ -21,7 +21,7 @@ import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
 import           Control.Exception
 import           Control.Lens
-import           Control.Monad                        (void, guard)
+import           Control.Monad                        (void, guard, forM_)
 import qualified Data.HashMap.Strict                  as Map
 import           Data.Int                             (Int64)
 import           Data.Monoid
@@ -152,7 +152,8 @@ flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
         Metrics.Gauge n ->
           sendMetric name (mdValue ?~ fromIntegral n)
         Metrics.Distribution d ->
-          sendMetric name (mdStatisticValues .~ conv d)
+          forM_ (conv d) $ \dist ->
+            sendMetric name (mdStatisticValues ?~ dist)
         Metrics.Label l ->
           pure ()
 
