@@ -21,7 +21,7 @@ import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
 import           Control.Exception
 import           Control.Lens
-import           Control.Monad                        (void)
+import           Control.Monad                        (void, guard)
 import qualified Data.HashMap.Strict                  as Map
 import           Data.Int                             (Int64)
 import           Data.Monoid
@@ -152,7 +152,7 @@ flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
         Metrics.Gauge n ->
           sendMetric name (mdValue ?~ fromIntegral n)
         Metrics.Distribution d ->
-          sendMetric name (mdStatisticValues ?~ conv d)
+          sendMetric name (mdStatisticValues .~ conv d)
         Metrics.Label l ->
           pure ()
 
@@ -169,5 +169,7 @@ flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
         Left err -> cweOnError err
         Right _ -> pure ()
 
-    conv :: Distribution.Stats -> StatisticSet
-    conv Distribution.Stats {..} = statisticSet (fromIntegral count) sum min max
+    conv :: Distribution.Stats -> Maybe StatisticSet
+    conv Distribution.Stats {..} = do
+      guard (count > 0)
+      pure (statisticSet (fromIntegral count) sum min max)
