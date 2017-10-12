@@ -20,18 +20,21 @@ module System.Remote.Monitoring.CloudWatch
 import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
 import           Control.Exception
+import Control.Monad.Trans.AWS (runAWST)
+import Control.Exception.Lens (trying)
+import Control.Monad.Trans.Resource (runResourceT)
 import           Control.Lens
-import Data.Maybe (mapMaybe)
-import           Control.Monad                        (void, guard, forM_)
+import           Control.Monad                        (forM_, guard, void)
 import qualified Data.HashMap.Strict                  as Map
 import           Data.Int                             (Int64)
-import Data.Traversable (for)
+import           Data.Maybe                           (mapMaybe)
 import           Data.Monoid
 import           Data.Text                            (Text)
 import qualified Data.Text                            as Text
 import qualified Data.Text.IO                         as Text
 import           Data.Time                            (NominalDiffTime)
 import           Data.Time.Clock.POSIX                (getPOSIXTime)
+import           Data.Traversable                     (for)
 import           Network.AWS                          as AWS
 import           Network.AWS.CloudWatch               as AWS
 import           System.IO                            (stderr)
@@ -123,7 +126,7 @@ diffSamples prev !curr = Map.foldlWithKey' combine Map.empty curr
         Just old ->
           case diffMetric old new of
             Just val -> Map.insert name val m
-            Nothing -> m
+            Nothing  -> m
         _ -> Map.insert name new m
 
     diffMetric :: Metrics.Value -> Metrics.Value -> Maybe Metrics.Value
@@ -173,8 +176,8 @@ flushSample CloudWatchEnv{..} = void
     sendMetric metrics = do
       -- TODO: This call is limited to 40KB in size. Any larger and it will
       -- whine.
-      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv . send $
+      e <- trying _Error . void . runResourceT . runAWST cweAwsEnv . send $
         putMetricData cweNamespace & pmdMetricData .~ metrics
       case e of
         Left err -> cweOnError err
-        Right _ -> pure ()
+        Right _  -> pure ()
