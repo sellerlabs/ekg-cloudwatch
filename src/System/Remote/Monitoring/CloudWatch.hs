@@ -21,9 +21,11 @@ import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
 import           Control.Exception
 import           Control.Lens
+import Data.Maybe (mapMaybe)
 import           Control.Monad                        (void, guard, forM_)
 import qualified Data.HashMap.Strict                  as Map
 import           Data.Int                             (Int64)
+import Data.Traversable (for)
 import           Data.Monoid
 import           Data.Text                            (Text)
 import qualified Data.Text                            as Text
@@ -141,36 +143,38 @@ diffSamples prev !curr = Map.foldlWithKey' combine Map.empty curr
         d2 {Distribution.count = Distribution.count d2 - Distribution.count d1}
     diffMetric _ _ = Nothing
 
-flushSample :: CloudWatchEnv -> Metrics.Sample -> IO ()
-flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
+metricToDatum :: [Dimension] -> Text -> Metrics.Value -> Maybe MetricDatum
+metricToDatum dim name =
+  \case
+    Metrics.Counter n ->
+      Just $ mkDatum (mdValue ?~ fromIntegral n)
+    Metrics.Gauge n ->
+      Just $ mkDatum (mdValue ?~ fromIntegral n)
+    Metrics.Distribution d ->
+      fmap (\dist -> mkDatum (mdStatisticValues ?~ dist)) (conv d)
+    Metrics.Label l ->
+      Nothing
   where
-    flushMetric :: Text -> Metrics.Value -> IO ()
-    flushMetric name =
-      \case
-        Metrics.Counter n ->
-          sendMetric name (mdValue ?~ fromIntegral n)
-        Metrics.Gauge n ->
-          sendMetric name (mdValue ?~ fromIntegral n)
-        Metrics.Distribution d ->
-          forM_ (conv d) $ \dist ->
-            sendMetric name (mdStatisticValues ?~ dist)
-        Metrics.Label l ->
-          pure ()
-
-    sendMetric :: Text -> (MetricDatum -> MetricDatum) -> IO ()
-    sendMetric name k = do
-      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv . send $
-        putMetricData cweNamespace
-          & pmdMetricData .~
-            [ metricDatum name
-              & mdDimensions .~ cweDimensions
-              & k
-            ]
-      case e of
-        Left err -> cweOnError err
-        Right _ -> pure ()
+    mkDatum k =
+      metricDatum name & mdDimensions .~ dim & k
 
     conv :: Distribution.Stats -> Maybe StatisticSet
     conv Distribution.Stats {..} = do
       guard (count > 0)
       pure (statisticSet (fromIntegral count) sum min max)
+
+flushSample :: CloudWatchEnv -> Metrics.Sample -> IO ()
+flushSample CloudWatchEnv{..} = void
+  . sendMetric
+  . mapMaybe (uncurry (metricToDatum cweDimensions))
+  . Map.toList
+  where
+    sendMetric :: [MetricDatum] -> IO ()
+    sendMetric metrics = do
+      -- TODO: This call is limited to 40KB in size. Any larger and it will
+      -- whine.
+      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv . send $
+        putMetricData cweNamespace & pmdMetricData .~ metrics
+      case e of
+        Left err -> cweOnError err
+        Right _ -> pure ()
