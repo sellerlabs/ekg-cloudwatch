@@ -179,12 +179,17 @@ data SplitAcc = SplitAcc
 splitAt40KB :: [MetricDatum] -> NonEmpty [MetricDatum]
 splitAt40KB = splitAccData . foldl' go (SplitAcc ([] :| []) 0)
   where
+    limit = 40000
+    fudge =  2000
+    safety = limit - fudge
     go (SplitAcc (acc :| accs) size) x
-      | size + weight >= 38000 =
+      | size + weight >= safety =
           SplitAcc ((x : acc) :| accs) (size + weight)
       | otherwise =
           SplitAcc ([x] :| (acc : accs)) 0
-      where weight = weighDatum x
+      where
+        weight = weighDatum x
+
 
 flushSample :: CloudWatchEnv -> Metrics.Sample -> IO ()
 flushSample CloudWatchEnv{..} = void
