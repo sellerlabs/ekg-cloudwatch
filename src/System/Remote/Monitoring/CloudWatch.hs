@@ -150,16 +150,15 @@ diffSamples prev !curr = Map.foldlWithKey' combine Map.empty curr
     diffMetric _ _ = Nothing
 
 metricToDatum :: [Dimension] -> Text -> Metrics.Value -> Maybe MetricDatum
-metricToDatum dim name =
-  \case
-    Metrics.Counter n ->
-      Just $ mkDatum (mdValue ?~ fromIntegral n)
-    Metrics.Gauge n ->
-      Just $ mkDatum (mdValue ?~ fromIntegral n)
-    Metrics.Distribution d ->
-      fmap (\dist -> mkDatum (mdStatisticValues ?~ dist)) (conv d)
-    Metrics.Label l ->
-      Nothing
+metricToDatum dim name val = case val of
+  Metrics.Counter n ->
+    Just $ mkDatum (mdValue ?~ fromIntegral n)
+  Metrics.Gauge n ->
+    Just $ mkDatum (mdValue ?~ fromIntegral n)
+  Metrics.Distribution d ->
+    fmap (\dist -> mkDatum (mdStatisticValues ?~ dist)) (conv d)
+  Metrics.Label l ->
+    Nothing
   where
     mkDatum k =
       metricDatum name & mdDimensions .~ dim & k
