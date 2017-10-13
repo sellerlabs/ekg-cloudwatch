@@ -21,17 +21,25 @@ import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
 import           Control.Exception
 import           Control.Lens
-import           Control.Monad                        (void, guard, forM_)
+import           Control.Monad                        (forM_, guard, void)
+import           Data.Aeson
+import qualified Data.ByteString                      as BS
 import qualified Data.HashMap.Strict                  as Map
 import           Data.Int                             (Int64)
+import           Data.List                            (foldl')
+import           Data.List.NonEmpty                   (NonEmpty (..))
+import           Data.Maybe                           (mapMaybe)
 import           Data.Monoid
 import           Data.Text                            (Text)
 import qualified Data.Text                            as Text
 import qualified Data.Text.IO                         as Text
 import           Data.Time                            (NominalDiffTime)
 import           Data.Time.Clock.POSIX                (getPOSIXTime)
+import           Data.Traversable                     (for)
 import           Network.AWS                          as AWS
 import           Network.AWS.CloudWatch               as AWS
+import           Network.AWS.Data.ByteString
+import           Network.AWS.Data.Query
 import           System.IO                            (stderr)
 import qualified System.Metrics                       as Metrics
 import qualified System.Metrics.Distribution.Internal as Distribution
@@ -121,7 +129,7 @@ diffSamples prev !curr = Map.foldlWithKey' combine Map.empty curr
         Just old ->
           case diffMetric old new of
             Just val -> Map.insert name val m
-            Nothing -> m
+            Nothing  -> m
         _ -> Map.insert name new m
 
     diffMetric :: Metrics.Value -> Metrics.Value -> Maybe Metrics.Value
@@ -141,36 +149,61 @@ diffSamples prev !curr = Map.foldlWithKey' combine Map.empty curr
         d2 {Distribution.count = Distribution.count d2 - Distribution.count d1}
     diffMetric _ _ = Nothing
 
-flushSample :: CloudWatchEnv -> Metrics.Sample -> IO ()
-flushSample CloudWatchEnv{..} = void . Map.traverseWithKey flushMetric
+metricToDatum :: [Dimension] -> Text -> Metrics.Value -> Maybe MetricDatum
+metricToDatum dim name val = case val of
+  Metrics.Counter n ->
+    Just $ mkDatum (mdValue ?~ fromIntegral n)
+  Metrics.Gauge n ->
+    Just $ mkDatum (mdValue ?~ fromIntegral n)
+  Metrics.Distribution d ->
+    fmap (\dist -> mkDatum (mdStatisticValues ?~ dist)) (conv d)
+  Metrics.Label l ->
+    Nothing
   where
-    flushMetric :: Text -> Metrics.Value -> IO ()
-    flushMetric name =
-      \case
-        Metrics.Counter n ->
-          sendMetric name (mdValue ?~ fromIntegral n)
-        Metrics.Gauge n ->
-          sendMetric name (mdValue ?~ fromIntegral n)
-        Metrics.Distribution d ->
-          forM_ (conv d) $ \dist ->
-            sendMetric name (mdStatisticValues ?~ dist)
-        Metrics.Label l ->
-          pure ()
-
-    sendMetric :: Text -> (MetricDatum -> MetricDatum) -> IO ()
-    sendMetric name k = do
-      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv . send $
-        putMetricData cweNamespace
-          & pmdMetricData .~
-            [ metricDatum name
-              & mdDimensions .~ cweDimensions
-              & k
-            ]
-      case e of
-        Left err -> cweOnError err
-        Right _ -> pure ()
+    mkDatum k =
+      metricDatum name & mdDimensions .~ dim & k
 
     conv :: Distribution.Stats -> Maybe StatisticSet
     conv Distribution.Stats {..} = do
       guard (count > 0)
       pure (statisticSet (fromIntegral count) sum min max)
+
+weighDatum :: MetricDatum -> Int
+weighDatum = BS.length . toBS . toQueryList "member" . (:[])
+
+data SplitAcc = SplitAcc
+  { splitAccData :: !(NonEmpty [MetricDatum])
+  , splitAccSize :: !Int
+  }
+
+splitAt40KB :: [MetricDatum] -> NonEmpty [MetricDatum]
+splitAt40KB = splitAccData . foldl' go (SplitAcc ([] :| []) 0)
+  where
+    limit = 40000
+    fudge =  2000
+    safety = limit - fudge
+    go (SplitAcc (acc :| accs) size) x
+      | size + weight >= safety =
+          SplitAcc ((x : acc) :| accs) (size + weight)
+      | otherwise =
+          SplitAcc ([x] :| (acc : accs)) 0
+      where
+        weight = weighDatum x
+
+
+flushSample :: CloudWatchEnv -> Metrics.Sample -> IO ()
+flushSample CloudWatchEnv{..} = void
+  . sendMetric
+  . mapMaybe (uncurry (metricToDatum cweDimensions))
+  . Map.toList
+  where
+    sendMetric :: [MetricDatum] -> IO ()
+    sendMetric metrics = do
+      -- TODO: This call is limited to 40KB in size. Any larger and it will
+      -- whine.
+      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv .
+        forM_ (splitAt40KB metrics) $ \metrics ->
+          send (putMetricData cweNamespace & pmdMetricData .~ metrics)
+      case e of
+        Left err -> cweOnError err
+        Right _  -> pure ()
