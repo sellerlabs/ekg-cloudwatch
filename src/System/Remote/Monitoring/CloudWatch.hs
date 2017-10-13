@@ -22,8 +22,12 @@ import           Control.Concurrent                   (ThreadId, forkFinally,
 import           Control.Exception
 import           Control.Lens
 import           Control.Monad                        (forM_, guard, void)
+import           Data.Aeson
+import qualified Data.ByteString                      as BS
 import qualified Data.HashMap.Strict                  as Map
 import           Data.Int                             (Int64)
+import           Data.List                            (foldl')
+import           Data.List.NonEmpty                   (NonEmpty (..))
 import           Data.Maybe                           (mapMaybe)
 import           Data.Monoid
 import           Data.Text                            (Text)
@@ -34,6 +38,8 @@ import           Data.Time.Clock.POSIX                (getPOSIXTime)
 import           Data.Traversable                     (for)
 import           Network.AWS                          as AWS
 import           Network.AWS.CloudWatch               as AWS
+import           Network.AWS.Data.ByteString
+import           Network.AWS.Data.Query
 import           System.IO                            (stderr)
 import qualified System.Metrics                       as Metrics
 import qualified System.Metrics.Distribution.Internal as Distribution
@@ -163,6 +169,24 @@ metricToDatum dim name =
       guard (count > 0)
       pure (statisticSet (fromIntegral count) sum min max)
 
+weighDatum :: MetricDatum -> Int
+weighDatum = BS.length . toBS . toQueryList "member" . (:[])
+
+data SplitAcc = SplitAcc
+  { splitAccData :: !(NonEmpty [MetricDatum])
+  , splitAccSize :: !Int
+  }
+
+splitAt40KB :: [MetricDatum] -> NonEmpty [MetricDatum]
+splitAt40KB = splitAccData . foldl' go (SplitAcc ([] :| []) 0)
+  where
+    go (SplitAcc (acc :| accs) size) x
+      | size + weight >= 38000 =
+          SplitAcc ((x : acc) :| accs) (size + weight)
+      | otherwise =
+          SplitAcc ([x] :| (acc : accs)) 0
+      where weight = weighDatum x
+
 flushSample :: CloudWatchEnv -> Metrics.Sample -> IO ()
 flushSample CloudWatchEnv{..} = void
   . sendMetric
@@ -173,8 +197,9 @@ flushSample CloudWatchEnv{..} = void
     sendMetric metrics = do
       -- TODO: This call is limited to 40KB in size. Any larger and it will
       -- whine.
-      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv . send $
-        putMetricData cweNamespace & pmdMetricData .~ metrics
+      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv .
+        forM_ (splitAt40KB metrics) $ \metrics ->
+          send (putMetricData cweNamespace & pmdMetricData .~ metrics)
       case e of
         Left err -> cweOnError err
         Right _  -> pure ()

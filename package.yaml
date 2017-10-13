@@ -13,7 +13,11 @@ dependencies:
   - base >=4.7 && <5
   - ekg-core >= 0.1 && < 1.0
   - amazonka >= 1.0.0
+  - amazonka-core >= 1.0.0
   - amazonka-cloudwatch >= 1.0.0
+  - aeson
+  - semigroups
+  - bytestring
   - lens
   - resourcet
   - text
