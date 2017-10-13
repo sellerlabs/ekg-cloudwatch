@@ -20,9 +20,6 @@ module System.Remote.Monitoring.CloudWatch
 import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
 import           Control.Exception
-import Control.Monad.Trans.AWS (runAWST)
-import Control.Exception.Lens (trying)
-import Control.Monad.Trans.Resource (runResourceT)
 import           Control.Lens
 import           Control.Monad                        (forM_, guard, void)
 import qualified Data.HashMap.Strict                  as Map
@@ -176,7 +173,7 @@ flushSample CloudWatchEnv{..} = void
     sendMetric metrics = do
       -- TODO: This call is limited to 40KB in size. Any larger and it will
       -- whine.
-      e <- trying _Error . void . runResourceT . runAWST cweAwsEnv . send $
+      e <- trying _Error . void . runResourceT . runAWS cweAwsEnv . send $
         putMetricData cweNamespace & pmdMetricData .~ metrics
       case e of
         Left err -> cweOnError err
