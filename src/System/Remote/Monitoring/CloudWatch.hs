@@ -199,8 +199,6 @@ flushSample CloudWatchEnv{..} = void
   where
     sendMetric :: [MetricDatum] -> IO ()
     sendMetric metrics = do
-      -- TODO: This call is limited to 40KB in size. Any larger and it will
-      -- whine.
       e <- trying _Error . void . runResourceT . runAWS cweAwsEnv .
         forM_ (splitAt40KB metrics) $ \metrics ->
           unless (null metrics) $
