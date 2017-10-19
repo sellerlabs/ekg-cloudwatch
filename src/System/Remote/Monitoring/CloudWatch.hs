@@ -198,7 +198,6 @@ flushSample CloudWatchEnv{..} = void
   . Map.toList
   where
     sendMetric :: [MetricDatum] -> IO ()
-    sendMetric [] = pure ()
     sendMetric metrics = do
       -- TODO: This call is limited to 40KB in size. Any larger and it will
       -- whine.
