@@ -19,17 +19,17 @@ module System.Remote.Monitoring.CloudWatch
 
 import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
-import           Control.Exception
+import           Control.Exception                    (Exception, throwTo,
+                                                       toException)
 import           Control.Lens
-import           Control.Monad                        (forM_, guard, void)
-import           Data.Aeson
+import           Control.Monad                        (forM_, guard, unless,
+                                                       void)
 import qualified Data.ByteString                      as BS
 import qualified Data.HashMap.Strict                  as Map
 import           Data.Int                             (Int64)
 import           Data.List                            (foldl')
 import           Data.List.NonEmpty                   (NonEmpty (..))
 import           Data.Maybe                           (mapMaybe)
-import           Data.Monoid
 import           Data.Text                            (Text)
 import qualified Data.Text                            as Text
 import qualified Data.Text.IO                         as Text
@@ -38,8 +38,8 @@ import           Data.Time.Clock.POSIX                (getPOSIXTime)
 import           Data.Traversable                     (for)
 import           Network.AWS                          as AWS
 import           Network.AWS.CloudWatch               as AWS
-import           Network.AWS.Data.ByteString
-import           Network.AWS.Data.Query
+import           Network.AWS.Data.ByteString          (toBS)
+import           Network.AWS.Data.Query               (toQueryList)
 import           System.IO                            (stderr)
 import qualified System.Metrics                       as Metrics
 import qualified System.Metrics.Distribution.Internal as Distribution
@@ -204,7 +204,8 @@ flushSample CloudWatchEnv{..} = void
       -- whine.
       e <- trying _Error . void . runResourceT . runAWS cweAwsEnv .
         forM_ (splitAt40KB metrics) $ \metrics ->
-          send (putMetricData cweNamespace & pmdMetricData .~ metrics)
+          unless (null metrics) $
+            void (send (putMetricData cweNamespace & pmdMetricData .~ metrics))
       case e of
         Left err -> cweOnError err
         Right _  -> pure ()
