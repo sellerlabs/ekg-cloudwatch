@@ -21,7 +21,7 @@ import           Control.Concurrent                   (ThreadId, forkFinally,
                                                        myThreadId, threadDelay)
 import           Control.Exception                    (Exception, throwTo,
                                                        toException)
-import           Control.Lens
+import           Control.Lens                         ((&), (.~), (?~))
 import           Control.Monad                        (forM_, guard, unless,
                                                        void)
 import qualified Data.ByteString                      as BS
