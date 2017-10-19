@@ -12,33 +12,18 @@ extra-source-files:
   - README.md
   - CHANGELOG.md
 
-dependencies:
-  - base >=4.7 && <5
-  - ekg-core >= 0.1 && < 1.0
-  - amazonka >= 1.0.0
-  - amazonka-core >= 1.0.0
-  - amazonka-cloudwatch >= 1.0.0
-  - aeson
-  - semigroups
-  - bytestring
-  - lens
-  - resourcet
-  - text
-  - time
-  - unordered-containers
-
 library:
   source-dirs: src
-
-tests:
-  ekg-cloudwatch-test:
-    main: Spec.hs
-    source-dirs: test
-    ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
-    dependencies:
-    - base
-    - ekg-cloudwatch
-    - hspec
+  dependencies:
+    - base >=4.7 && <5
+    - ekg-core >= 0.1 && < 1.0
+    - amazonka >= 1.0.0
+    - amazonka-cloudwatch >= 1.0.0
+    - amazonka-core >= 1.0.0
+    - bytestring
+    - lens
+    - resourcet
+    - semigroups
+    - text
+    - time
+    - unordered-containers
